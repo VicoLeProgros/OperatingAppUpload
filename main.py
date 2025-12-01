@@ -6,20 +6,30 @@ import io
 # Data Processing Functions
 # --------------------------
 def preprocess_df(df):
+    # --------------------------
+    # Sanitize & filter rows
+    # --------------------------
     df['Hours'] = pd.to_numeric(df['Hours'], errors='coerce')
+
     df = df[
-        (~df['Activity #'].str.contains('Lunch', na=False)) &
+        (~df['Activity #'].astype(str).str.contains('Lunch', na=False)) &
         (~df['Activity Name'].str.contains('Break|Work across border|Overtime', case=False, na=False)) &
         (df['Hours'].notna()) &
         (df['Hours'] != 0)
     ].reset_index(drop=True)
 
-    def get_billable(row):
-        for col in ['Billable', 'Bill.', 'Invoiceable', 'Inv.']:
-            if col in df.columns:
-                return row[col]
-        return None
+    # --------------------------
+    # Determine existing billable column name
+    # --------------------------
+    possible_billable_cols = ['Billable', 'Bill.', 'Invoiceable', 'Inv.']
+    billable_col = next((col for col in possible_billable_cols if col in df.columns), None)
 
+    def get_billable(row):
+        return row[billable_col] if billable_col else None
+
+    # --------------------------
+    # Build the final DF
+    # --------------------------
     final_df = pd.DataFrame({
         'Date': pd.to_datetime(df['Date']).dt.date,
         'PersonName': df['Employee Name'],
@@ -29,23 +39,50 @@ def preprocess_df(df):
         'Project': df['Activity Name'],
         'ProjectId': df['Activity #'].astype(str) + df['Project #'].astype(str),
         'Client': df['Project Name'],
-        'ClientId': df['Project #'],
+        'ClientId': df['Project #'].astype(str),
         'Task': '',
         'TaskId': '',
         'Description': ''
     })
 
+    # --------------------------
+    # Project name → ID overrides
+    # --------------------------
     project_code_map = {
         "Sales existing customer": "4100",
         "Customer specific emission factors": "5100",
         "Knowledge transfer": "4400",
         "Customer Success Management": "6800"
     }
-    for project_name, code in project_code_map.items():
-        final_df.loc[final_df['Project'].str.contains(project_name, case=False, na=False), 'ProjectId'] = code
 
+    for project_name, code in project_code_map.items():
+        final_df.loc[
+            final_df['Project'].str.contains(project_name, case=False, na=False),
+            'ProjectId'
+        ] = code
+
+    # --------------------------
+    # Default billable rule: Hours > 0 → TRUE
+    # --------------------------
     final_df['Billable'] = final_df['Hours'].apply(lambda x: "TRUE" if x > 0 else "FALSE")
+
+    # --------------------------
+    # Business rules
+    # --------------------------
+    non_billable_projects = {"1002", "1001", "4"}
+    non_billable_activities = {"44", "14", "15", "16", "17", "41"}
+
+    # Extract Activity # (first part of the concatenated ProjectId)
+    activity_ids = final_df['ProjectId'].str.extract(r'^(\d+)')[0]
+
+    final_df.loc[
+        final_df['ClientId'].isin(non_billable_projects) |
+        activity_ids.isin(non_billable_activities),
+        'Billable'
+    ] = "FALSE"
+
     return final_df
+
 
 # --------------------------
 # Streamlit UI
@@ -91,4 +128,5 @@ if uploaded_file:
         file_name="filtered_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
