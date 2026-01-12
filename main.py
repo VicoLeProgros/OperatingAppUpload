@@ -2,15 +2,18 @@
 import pandas as pd
 import streamlit as st
 import io
+
 # --------------------------
 # Data Processing Functions
 # --------------------------
 def preprocess_df(df):
+
     # --------------------------
     # Sanitize & filter rows
     # --------------------------
     df['Hours'] = pd.to_numeric(df['Hours'], errors='coerce')
 
+    # Remove rows with empty or zero hours + unwanted activities
     df = df[
         (~df['Activity #'].astype(str).str.contains('Lunch', na=False)) &
         (~df['Activity Name'].str.contains('Break|Work across border|Overtime', case=False, na=False)) &
@@ -19,7 +22,7 @@ def preprocess_df(df):
     ].reset_index(drop=True)
 
     # --------------------------
-    # Determine existing billable column name
+    # Determine existing billable column name (if any)
     # --------------------------
     possible_billable_cols = ['Billable', 'Bill.', 'Invoiceable', 'Inv.']
     billable_col = next((col for col in possible_billable_cols if col in df.columns), None)
@@ -28,7 +31,7 @@ def preprocess_df(df):
         return row[billable_col] if billable_col else None
 
     # --------------------------
-    # Build the final DF
+    # Build the final dataframe
     # --------------------------
     final_df = pd.DataFrame({
         'Date': pd.to_datetime(df['Date']).dt.date,
@@ -62,9 +65,23 @@ def preprocess_df(df):
         ] = code
 
     # --------------------------
-    # Default billable rule: Hours > 0 → TRUE
+    # Default billable rule
     # --------------------------
-    final_df['Billable'] = final_df['Hours'].apply(lambda x: "TRUE" if x > 0 else "FALSE")
+    final_df['Billable'] = final_df['Hours'].apply(
+        lambda x: "TRUE" if x > 0 else "FALSE"
+    )
+
+    # --------------------------
+    # Override: mapped projects are NON-billable
+    # --------------------------
+    final_df.loc[
+        final_df['Project'].str.contains(
+            '|'.join(project_code_map.keys()),
+            case=False,
+            na=False
+        ),
+        'Billable'
+    ] = "FALSE"
 
     # --------------------------
     # Business rules
@@ -72,7 +89,7 @@ def preprocess_df(df):
     non_billable_projects = {"1002", "1001", "4"}
     non_billable_activities = {"44", "14", "15", "16", "17", "41"}
 
-    # Extract Activity # (first part of the concatenated ProjectId)
+    # Extract Activity # (first numeric block of ProjectId)
     activity_ids = final_df['ProjectId'].str.extract(r'^(\d+)')[0]
 
     final_df.loc[
@@ -90,43 +107,53 @@ def preprocess_df(df):
 st.set_page_config(page_title="Excel Filter App", layout="wide")
 st.title("Excel Filter and Preview Tool")
 
-# Upload Excel file
 uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx", "xls"])
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
     final_df = preprocess_df(df)
 
+    # --------------------------
     # Person selection
+    # --------------------------
     st.subheader("Select Persons")
-    all_persons = final_df[['PersonId', 'PersonName']].drop_duplicates().sort_values('PersonId')
+    all_persons = (
+        final_df[['PersonId', 'PersonName']]
+        .drop_duplicates()
+        .sort_values('PersonId')
+    )
+
     unchecked_ids = {2112, 4014, 5009, 2102, 2100, 2107, 4131, 4013, 1007, 1020}
     force_checked_ids = {1008, 1145}
 
     selected_persons = []
     for _, row in all_persons.iterrows():
         pid = int(row['PersonId'])
-        default_checked = not ((str(pid).startswith(('1','9')) or pid in unchecked_ids) and pid not in force_checked_ids)
+        default_checked = not (
+            (str(pid).startswith(('1', '9')) or pid in unchecked_ids)
+            and pid not in force_checked_ids
+        )
+
         if st.checkbox(f"{row['PersonName']} ({row['PersonId']})", value=default_checked):
             selected_persons.append(row['PersonId'])
 
     filtered_df = final_df[final_df['PersonId'].isin(selected_persons)]
 
-    # Preview first 100 rows
+    # --------------------------
+    # Preview
+    # --------------------------
     st.subheader("Preview (first 100 rows)")
     st.dataframe(filtered_df.head(100), use_container_width=True)
 
-    # Export full dataset
+    # --------------------------
+    # Export
+    # --------------------------
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         filtered_df.to_excel(writer, index=False)
-    
-    processed_data = output.getvalue()
-    
+
     st.download_button(
         label="Export Full Filtered Data to Excel",
-        data=processed_data,
+        data=output.getvalue(),
         file_name="filtered_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
-
