@@ -67,7 +67,7 @@ def preprocess_df(df):
     # --------------------------
     # Default billable rule
     # --------------------------
-    final_df['Billable'] = final_df['Hours'].apply(
+    final_df['Billable'] = final_df['Billable'].apply(
         lambda x: "TRUE" if x > 0 else "FALSE"
     )
 
