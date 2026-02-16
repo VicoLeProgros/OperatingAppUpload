@@ -147,13 +147,19 @@ if uploaded_file:
     # --------------------------
     # Export
     # --------------------------
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        filtered_df.to_excel(writer, index=False)
-
+    # Create a buffer to hold CSV data
+    output = io.StringIO()
+    
+    # Export DataFrame to CSV with comma delimiter and dot as decimal separator
+    filtered_df.to_csv(output, index=False, sep=',', decimal='.')
+    
+    # Reset pointer to start
+    output.seek(0)
+    
+    # Download button for CSV
     st.download_button(
-        label="Export Full Filtered Data to Excel",
+        label="Export Full Filtered Data to CSV",
         data=output.getvalue(),
-        file_name="filtered_data.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        file_name="filtered_data.csv",
+        mime="text/csv"
     )
