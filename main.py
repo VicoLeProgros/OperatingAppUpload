@@ -152,7 +152,7 @@ if uploaded_file:
     output = io.BytesIO()
     
     # Export DataFrame to Excel
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
         filtered_df.to_excel(writer, index=False, sheet_name='Filtered Data')
     
     # Reset pointer to start
@@ -165,4 +165,5 @@ if uploaded_file:
         file_name="filtered_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
