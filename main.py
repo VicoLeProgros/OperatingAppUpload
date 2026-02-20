@@ -147,19 +147,22 @@ if uploaded_file:
     # --------------------------
     # Export
     # --------------------------
-    # Create a buffer to hold CSV data
-    output = io.StringIO()
     
-    # Export DataFrame to CSV with comma delimiter and dot as decimal separator
-    filtered_df.to_csv(output, index=False, sep=',', decimal='.')
+    # Create a buffer to hold Excel data
+    output = io.BytesIO()
+    
+    # Export DataFrame to Excel
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        filtered_df.to_excel(writer, index=False, sheet_name='Filtered Data')
     
     # Reset pointer to start
     output.seek(0)
     
-    # Download button for CSV
+    # Download button for Excel
     st.download_button(
-        label="Export Full Filtered Data to CSV",
-        data=output.getvalue(),
-        file_name="filtered_data.csv",
-        mime="text/csv"
+        label="Export Full Filtered Data to Excel",
+        data=output,
+        file_name="filtered_data.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
